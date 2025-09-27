@@ -1,1 +1,200 @@
+1 Folder. cmd
+---> serve.go
+package cmd
+
+import (
+	"ecommerce/global_router"
+	"ecommerce/handlers"
+	"fmt"
+	"net/http"
+)
+
+func Serve() {
+	mux := http.NewServeMux()
+
+	mux.Handle("GET /products", http.HandlerFunc(handlers.GetProducts))
+	mux.Handle("POST /products", http.HandlerFunc(handlers.CreateProduct))
+	mux.Handle("GET /products/{productId}", http.HandlerFunc(handlers.GetProductByID))
+
+	fmt.Println("Server running on :8080")
+
+	globalRouter := global_router.GlobalRouter(mux)
+	err := http.ListenAndServe(":8080", globalRouter)
+	if err != nil {
+		fmt.Println("Error starting the server", err)
+	}
+}
+
+2 Folder. database
+--> product.go
+
+package database
+
+var ProductList []Product
+
+type Product struct {
+	ID          int     `json:"id"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Price       float64 `json:"price,string"`
+	ImgUrl      string  `json:"imageUrl"`
+}
+
+func init() {
+	prd1 := Product{
+		ID:          1,
+		Title:       "Orange",
+		Description: "Orange is red",
+		Price:       100,
+		ImgUrl:      "https://i.chaldn.com/_mpimage/komola-orange-imported-50-gm-1-kg?src=https%3A%2F%2Feggyolk.chaldal.com%2Fapi%2FPicture%2FRaw%3FpictureId%3D64292&q=best&v=1&m=1600",
+	}
+	prd2 := Product{
+		ID:          2,
+		Title:       "Apple",
+		Description: "Apple is Green",
+		Price:       150,
+		ImgUrl:      "https://assets.clevelandclinic.org/transform/LargeFeatureImage/cd71f4bd-81d4-45d8-a450-74df78e4477a/Apples-184940975-770x533-1_jpg",
+	}
+	prd3 := Product{
+		ID:          3,
+		Title:       "Banana",
+		Description: "Banana is Yellow",
+		Price:       50,
+		ImgUrl:      "https://www.orchardfood.co.za/cdn/shop/files/Bananas-2.png?v=1753697464&width=1946",
+	}
+	prd4 := Product{
+		ID:          4,
+		Title:       "Lichu",
+		Description: "Lichu is red",
+		Price:       10,
+		ImgUrl:      "https://media.gettyimages.com/id/566454679/photo/lychee-fruits.jpg?s=1024x1024&w=gi&k=20&c=mb13OLKoGK9QZYHi3j5nMgBfkuhSMue19wMRCrLWy5g=",
+	}
+
+	ProductList = append(ProductList, prd1)
+	ProductList = append(ProductList, prd2)
+	ProductList = append(ProductList, prd3)
+	ProductList = append(ProductList, prd4)
+
+}
+
+3 Folder. global_router
+--> global_router.go
+package global_router
+
+import "net/http"
+
+func GlobalRouter(mux *http.ServeMux) http.Handler {
+	handleAllReq := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(200)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}
+	return http.HandlerFunc(handleAllReq)
+}
+
+4 folder. handlers
+ --> create_product.go
+package handlers
+
+import (
+	"ecommerce/database"
+	"ecommerce/util"
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+func CreateProduct(w http.ResponseWriter, r *http.Request) {
+	var newProduct database.Product
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&newProduct)
+
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "Please give me valid json", 400)
+		return
+	}
+
+	newProduct.ID = len(database.ProductList) + 1
+
+	database.ProductList = append(database.ProductList, newProduct)
+
+	util.SendData(w, newProduct, 201)
+}
+
+--> get_product_by_id.go
+package handlers
+
+import (
+	"ecommerce/database"
+	"ecommerce/util"
+	"net/http"
+	"strconv"
+)
+
+func GetProductByID(w http.ResponseWriter, r *http.Request) {
+	productID := r.PathValue("productId")
+
+	pId, err := strconv.Atoi(productID)
+	if err != nil {
+		http.Error(w, "please give me valid product id", 400)
+		return
+	}
+
+	for _, product := range database.ProductList {
+		if product.ID == pId {
+			util.SendData(w, product, 200)
+			return
+		}
+	}
+	util.SendData(w, "Data pai nai ", 200)
+}
+
+--> get_products.go
+package handlers
+
+import (
+	"ecommerce/database"
+	"ecommerce/util"
+	"net/http"
+)
+
+func GetProducts(w http.ResponseWriter, r *http.Request) {
+	util.SendData(w, database.ProductList, 200)
+}
+5. Folder util
+-->send_data.go
+package util
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+func SendData(w http.ResponseWriter, data interface{}, statusCode int) {
+	w.WriteHeader(statusCode)
+	encoder := json.NewEncoder(w)
+	encoder.Encode(data)
+}
+
+
+-->main.go
+package main
+
+import (
+	"ecommerce/cmd"
+)
+
+func main() {
+	cmd.Serve()
+}
+
+
 
