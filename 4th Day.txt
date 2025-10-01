@@ -1,0 +1,373 @@
+1 Folder. cmd
+---> serve.go
+package cmd
+
+import (
+	"ecommerce/middleware"
+	"fmt"
+	"net/http"
+)
+
+func Serve() {
+	manager := middleware.NewManager()
+	manager.Use(
+		middleware.Preflight,
+		middleware.Cors,
+		middleware.Logger,
+	)
+
+	mux := http.NewServeMux()
+	wrappedMux := manager.WrapMux(mux)
+
+	initRoutes(mux, manager)
+
+	fmt.Println("Server running on :8080")
+	err := http.ListenAndServe(":8080", wrappedMux)
+	if err != nil {
+		fmt.Println("Error starting the server", err)
+	}
+}
+
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+--> routes.go
+package cmd
+
+import (
+	"ecommerce/handlers"
+	"ecommerce/middleware"
+	"net/http"
+)
+
+func initRoutes(mux *http.ServeMux, manager *middleware.Manager) {
+	mux.Handle(
+		"GET /uddin",
+		manager.With(
+			http.HandlerFunc(handlers.Test),
+			middleware.Arekta,
+		))
+
+	mux.Handle(
+		"GET /mohi",
+		manager.With(
+			http.HandlerFunc(handlers.Test),
+		))
+
+	mux.Handle(
+		"GET /products",
+		manager.With(
+			http.HandlerFunc(handlers.GetProducts),
+		))
+
+	mux.Handle(
+		"POST /products",
+		manager.With(
+			http.HandlerFunc(handlers.CreateProduct),
+		))
+
+	mux.Handle(
+		"GET /products/{productId}",
+		manager.With(
+			http.HandlerFunc(handlers.GetProductByID),
+		))
+
+}
+
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+
+2 Folder. database
+--> product.go
+
+package database
+
+var ProductList []Product
+
+type Product struct {
+	ID          int     `json:"id"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Price       float64 `json:"price,string"`
+	ImgUrl      string  `json:"imageUrl"`
+}
+
+func init() {
+	prd1 := Product{
+		ID:          1,
+		Title:       "Orange",
+		Description: "Orange is red",
+		Price:       100,
+		ImgUrl:      "https://i.chaldn.com/_mpimage/komola-orange-imported-50-gm-1-kg?src=https%3A%2F%2Feggyolk.chaldal.com%2Fapi%2FPicture%2FRaw%3FpictureId%3D64292&q=best&v=1&m=1600",
+	}
+	prd2 := Product{
+		ID:          2,
+		Title:       "Apple",
+		Description: "Apple is Green",
+		Price:       150,
+		ImgUrl:      "https://assets.clevelandclinic.org/transform/LargeFeatureImage/cd71f4bd-81d4-45d8-a450-74df78e4477a/Apples-184940975-770x533-1_jpg",
+	}
+	prd3 := Product{
+		ID:          3,
+		Title:       "Banana",
+		Description: "Banana is Yellow",
+		Price:       50,
+		ImgUrl:      "https://www.orchardfood.co.za/cdn/shop/files/Bananas-2.png?v=1753697464&width=1946",
+	}
+	prd4 := Product{
+		ID:          4,
+		Title:       "Lichu",
+		Description: "Lichu is red",
+		Price:       10,
+		ImgUrl:      "https://media.gettyimages.com/id/566454679/photo/lychee-fruits.jpg?s=1024x1024&w=gi&k=20&c=mb13OLKoGK9QZYHi3j5nMgBfkuhSMue19wMRCrLWy5g=",
+	}
+
+	ProductList = append(ProductList, prd1)
+	ProductList = append(ProductList, prd2)
+	ProductList = append(ProductList, prd3)
+	ProductList = append(ProductList, prd4)
+
+}
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+3 Folder. global_router
+--> global_router.go
+package global_router
+
+import "net/http"
+
+func GlobalRouter(mux *http.ServeMux) http.Handler {
+	handleAllReq := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(200)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}
+	return http.HandlerFunc(handleAllReq)
+}
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+4 folder. handlers
+ --> create_product.go
+package handlers
+
+import (
+	"ecommerce/database"
+	"ecommerce/util"
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+func CreateProduct(w http.ResponseWriter, r *http.Request) {
+	var newProduct database.Product
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&newProduct)
+
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "Please give me valid json", 400)
+		return
+	}
+
+	newProduct.ID = len(database.ProductList) + 1
+
+	database.ProductList = append(database.ProductList, newProduct)
+
+	util.SendData(w, newProduct, 201)
+}
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+--> get_product_by_id.go
+package handlers
+
+import (
+	"ecommerce/database"
+	"ecommerce/util"
+	"net/http"
+	"strconv"
+)
+
+func GetProductByID(w http.ResponseWriter, r *http.Request) {
+	productID := r.PathValue("productId")
+
+	pId, err := strconv.Atoi(productID)
+	if err != nil {
+		http.Error(w, "please give me valid product id", 400)
+		return
+	}
+
+	for _, product := range database.ProductList {
+		if product.ID == pId {
+			util.SendData(w, product, 200)
+			return
+		}
+	}
+	util.SendData(w, "Data pai nai ", 200)
+}
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+--> get_products.go
+package handlers
+
+import (
+	"ecommerce/database"
+	"ecommerce/util"
+	"net/http"
+)
+
+func GetProducts(w http.ResponseWriter, r *http.Request) {
+	util.SendData(w, database.ProductList, 200)
+}
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+--> test.go
+package handlers
+
+import (
+	"log"
+	"net/http"
+)
+
+func Test(w http.ResponseWriter, r *http.Request) {
+	log.Println("ami handler: middle er pore print hobo")
+}
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+5. Folder Middleware
+--> arekta.go
+package middleware
+
+import (
+	"log"
+	"net/http"
+)
+
+func Arekta(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		log.Println("ami Arekta middleware")
+		next.ServeHTTP(w, r)
+	})
+}
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+--> cors.go
+package middleware
+
+import "net/http"
+
+func Cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Content-Type", "application/json")
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+--> logger.go
+package middleware
+
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+func Logger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		log.Println(r.Method, r.URL.Path, time.Since(start))
+	})
+}
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+--> manager.go
+package middleware
+
+import (
+	"net/http"
+)
+
+type Middleware func(http.Handler) http.Handler
+
+type Manager struct {
+	globalMiddlewares []Middleware
+}
+
+func NewManager() *Manager {
+	return &Manager{
+		globalMiddlewares: make([]Middleware, 0),
+	}
+}
+func (mngr *Manager) Use(middlewares ...Middleware) {
+	mngr.globalMiddlewares = append(mngr.globalMiddlewares, middlewares...)
+}
+func (mngr *Manager) With(handler http.Handler, middlewares ...Middleware) http.Handler {
+
+	h := handler
+	for _, middleware := range middlewares {
+		h = middleware(h)
+	}
+
+	return h
+}
+
+func (mngr *Manager) WrapMux(handler http.Handler) http.Handler {
+
+	h := handler
+
+	for _, middleware := range mngr.globalMiddlewares {
+		h = middleware(h)
+	}
+
+	return h
+}
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+-->preflight.go
+package middleware
+
+import (
+	"net/http"
+)
+
+func Preflight(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(200)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+6. Folder util
+-->send_data.go
+package util
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+func SendData(w http.ResponseWriter, data interface{}, statusCode int) {
+	w.WriteHeader(statusCode)
+	encoder := json.NewEncoder(w)
+	encoder.Encode(data)
+}
+
+--------------------------------------------------------------------------xxxxxxxxxxxx-----------------------------------------------------------------------------------------------
+-->main.go
+package main
+
+import (
+	"ecommerce/cmd"
+)
+
+func main() {
+	cmd.Serve()
+}
