@@ -1,0 +1,39 @@
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+// corsMiddleware adds the CORS headers and handles pre-flight OPTIONS requests.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ---- 1. CORS response headers (same for every request) ----
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Content-Type", "application/json")
+
+		// ---- 2. Pre-flight (OPTIONS) handling ----
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// ---- 3. Call the real handler for non-OPTIONS verbs ----
+		next.ServeHTTP(w, r)
+	})
+}
+
+func main() {
+	mux := http.NewServeMux()
+	mux.Handle("GET /products", http.HandlerFunc(getProducts))
+	mux.Handle("POST /create-products", http.HandlerFunc(createProducts))
+    
+	handler := corsMiddleware(mux)
+
+	fmt.Println("Server running on :8080")
+	if err := http.ListenAndServe(":8080", handler); err != nil {
+		fmt.Println("Error starting the server:", err)
+	}
+}
